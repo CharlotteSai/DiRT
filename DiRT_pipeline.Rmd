@@ -75,7 +75,7 @@ tRNA.info <- read_delim("./Essential_files/vitVin1-tRNAs.bed", delim = "\t", col
 
 
 ## find closeest gene to an tRNA for both behind and after by ```BEDTools``` on terminal
-Before start, the genome file might needed. This information can be pull out from the target dataset `bam` file header.
+Before start, the genome file might needed. This information can be pull out from any target dataset `bam` file header.
 
 ```{r}
 seq.size <- BamFile("~/biohub/160830_RNAseq_terroir/2_HISAT2/20.bothrun.sorted.cleaned.bam") %>% 
@@ -86,7 +86,7 @@ seq.size <- BamFile("~/biohub/160830_RNAseq_terroir/2_HISAT2/20.bothrun.sorted.c
   arrange(sequence)
 
 # write.table(seq.size,
-#             file = "~/dicis_test/Vv_genome.txt",
+#             file = "./Essential_files/Vv_genome.txt",
 #             quote = FALSE, sep = "\t",
 #             row.names = FALSE, col.names = FALSE)
 ```
@@ -116,11 +116,11 @@ closest_tRNA_gene <- rbind(closest_tRNA_gene.up,closest_tRNA_gene.down) %>%
          tRNA.upstream = ifelse(gene.strand == '+' & distance > 0, TRUE,
                                 ifelse(gene.strand == '-' & distance < 0, TRUE, FALSE)),
          interval.length = ifelse(tRNAFirst == TRUE, 
-                                  (gene.start-1)-(tRNA.end+1)+1, (tRNA.start-1)-(gene.end+1)+1)) #1104
+                                  (gene.start-1)-(tRNA.end+1)+1, (tRNA.start-1)-(gene.end+1)+1))
 ```
 
 ## subset for proper distance (not overlapped) for tRNA-gene combination and add unique id to them
-This pipeline is designed for non-stranded library, so non-overlapped tRNA-gene combinations are the proper input. tRNA or gene id stand itself may cause issue for one match many, therefore, unique combination id is needed.
+This pipeline is designed for non-stranded library, so only non-overlapped tRNA-gene combinations are considered as input. tRNA or gene id stand itself may cause issue for one match many, therefore, unique combination id is needed.
 
 ```{r}
 tRNA.gene.combo <- closest_tRNA_gene %>% 
@@ -131,17 +131,13 @@ mutate(tRNA.id = as.character(tRNA.id),
   split(f = seq(1, nrow(.))) %>% # break up the dataframe to one col one dataframe 
   lapply(function(x){mutate(x, id = paste(sort(c(x$tRNA.id, x$gene.id)), collapse = "_"))}) %>%
   bind_rows() 
-# 987
 ```
 
 # filter commonly expressed tRNA and gene in 6 vineyard level
 ## setup the bundary for the whole genome (safty net!)
 ```{r}
-seq.size <- "./Essential_files/Vv_genome.txt"
-# this should be consistant with the target bam dataset 
-
-Seqinfo <- seq.size %>%
-    read_delim(delim = "\t", col_names = FALSE) %>%
+Seqinfo <- read_delim("./Essential_files/Vv_genome.txt", 
+                      delim = "\t", col_names = FALSE) %>%
     set_names(c("seqnames", "seqlengths"))
 
 Seqinfo <- with(Seqinfo,
@@ -168,11 +164,11 @@ GRange_tRNA <- makeGRangesFromDataFrame(tRNA.info,
 
 ```{r}
 # specify Samples
-bam.dir <- "~/biohub/160830_RNAseq_terroir/2_HISAT2" # need change based on where I use RSudio
+bam.dir <- "~/biohub/160830_RNAseq_terroir/2_HISAT2" # Dir for bamfiles 
 bamfiles <- list.files(bam.dir, pattern=".cleaned.bam$", full.names = TRUE)
 
 SampleName <- paste0("Sample_",str_extract(basename(bamfiles),"^[0-9]+")) 
-# differdent str_extract pattern can be applied according to your bam names
+# differdent str_extract pattern will be applied according to your bam names
 
 counts <- lapply (bamfiles,function(bamfile){
   baifile <- paste0(bamfile,".bai")
@@ -195,17 +191,17 @@ tRNA.counts <- cbind(tRNA.info,counts)
 ## filter commonly expressed tRNA in vineyard level
 
 ```{r}
-# filter expressed tRNA in all 6 vineyards
+# filter expressed tRNA 
+# filter needs to be defined according to your dataset. Here, the requirement is at least one read align to this gene and reads alignment commonly presents at least in 6 samples 
 tRNA.expressed.AllSample <- rowSums(dplyr::select(tRNA.counts,6:11) >= 1) == 6 
-# return logical value for all read count col
-sum(tRNA.expressed.AllSample) #117
+# return logical value for all read count column
+sum(tRNA.expressed.AllSample) 
 common.tRNA <- tRNA.counts[tRNA.expressed.AllSample,]
 tRNA.expressed.gene.combo <- filter(tRNA.gene.combo, tRNA.id %in% common.tRNA$tRNA_id) #69 tRNA
 ```
 
 
 ## build up ``GRange`` for gene
-
 ```{r}
 # prepare gene data
 gene.counts <- tRNA.expressed.gene.combo %>%
@@ -244,16 +240,15 @@ gene.counts <- cbind(gene.counts,counts)
 ```
 
 ```{r}
-# filter expressed tRNA in all 6 vineyards
-gene.expressed.AllSample <- rowSums(dplyr::select(gene.counts, 6:11) >= 1) == 6
-sum(gene.expressed.AllSample) #102-1
+# filter expressed gene 
+gene.expressed.AllSample <- rowSums(dplyr::select(gene.counts, 6:11) >= 1) == 6 # same requirement as above 
+sum(gene.expressed.AllSample) 
 common.gene <- gene.counts[gene.expressed.AllSample,]
-tRNA.gene.expressed.combo <- filter(tRNA.expressed.gene.combo, gene.id %in% common.gene$gene.id) #102-1 gene
+tRNA.gene.expressed.combo <- filter(tRNA.expressed.gene.combo, gene.id %in% common.gene$gene.id)
 ```
 
 # statistical test
 ## pull out the intron range
-
 ```{r}
 # define input.data
 input.data <- tRNA.gene.expressed.combo
@@ -312,7 +307,7 @@ UTR_exon.info <- rbind(exon.info,
                        UTR5.info,
                        UTR3.info) %>%
   arrange(chr, start, end)
-# it looks like the first or last exon embl plants defined acturaly take UTR into a count as a part of it. if UTR info is provided, the intron in the UTR region can be found. otherwise, it returns intron info in the following code as typical intron, which is between two exon is a intron.
+# It looks like the first or last exon embl plants defined acturaly take UTR into a count as a part of it. if UTR info is provided, the intron in the UTR region can be found. otherwise, it returns intron info in the following code as typical intron, which is between two exon is a intron.
 
 # pull out intron coordinates based on the data above
 UTR_exon.set1 <- UTR_exon.info %>% 
@@ -496,7 +491,6 @@ final.stats.info <- do.call("rbind", list(intron.closest,
 
 
 ### write intron and intergenic info into ``GRange`` object
-
 ```{r}
 # intergenic
 GRange_intergenic <- intergenic.info %>%
@@ -536,8 +530,7 @@ GRange_intron.2nd.closest <- intron.2nd.closest %>%
                            starts.in.df.are.0based = FALSE)
 ```
 
-### use ``coverage()`` to look through ``bam`` files for coverage of each base
-
+### use ``Cal_Coverage()`` to look through ``bam`` files for coverage of each base
 ```{r, coverage of intergenic}
 # initialize the function to calculate coverage
 Cal_Coverage <- function(gr, bam){
@@ -625,7 +618,7 @@ AC.intron.2nd.closest <- lapply(names(coverage.intron.2nd.closest), function(x){
   dplyr::select(ids, everything())
 
 
-# gethering AC data for t-test
+# gethering Average Coverage data for t-test
 AC.final <- do.call("rbind", list(AC.intergenic,
                                   AC.intron.closest,
                                   AC.intron.2nd.closest))
@@ -710,7 +703,6 @@ final.stats.parid <- do.call("rbind", list(intron.closest.up.data,
 ```
 
 ## gethering coverage data for t-test
-
 ```{r}
 final.stats.test <- final.stats.parid %>%
   dplyr::select(chr, start, end, strand, ids, id, type, length)
@@ -730,7 +722,6 @@ aveCoverage.final <- aveCoverage.all %>%
 ```
 
 ## quick check
-
 ```{r}
 # check with boxplot
 aveCoverage.final %>%
@@ -753,7 +744,6 @@ t.test(log(filter(aveCoverage.final, type == "intron_closest_to_intergenic")$ave
 ```
 
 ## go for t.test
-
 ```{r}
 # Map the tRNAs to genes
 tRnaToGene <- aveCoverage.final %>%
@@ -764,10 +754,9 @@ tRnaToGene <- aveCoverage.final %>%
   mutate(id = as.character(id)) %>%
   split(f = .$id) %>%
   lapply(function(x){
-    if (nrow(x) == 1) return(x) # This removes the genes with >1 tRNA, the issue about gene with muiltiple tRNA is fixed after I give tRNA_gene combo id  
+    if (nrow(x) == 1) return(x) # This removes the genes with >1 tRNA, already fixed with unique tRNA-gene combo id
   }) %>%
   bind_rows() 
-#127 in total (less gene than combind bamfile may because we filter the expression for commonly expressed tRNA and gene rather than just start with 232)
 ```
 
 ```{r}
@@ -832,7 +821,7 @@ tTestResults.final <- tRnaToGene$ids %>%
 ```
 
 # output
-```{r}
+```{r two way filtering}
 # for FDR
 intergeic.sign.final <- tTestResults.final$IntergenicVsintron_closest_to_intergenic %>% 
   filter(FDR < 0.05, V < 0) # 46/119
@@ -850,7 +839,7 @@ final.sign.adjP <- intersect(intron.not.sign.final$id,intergeic.sign.final$id) #
 
 ## assess continuous coverage for candidates that pass the t.test
 ```{r}
-allIntergenic <- names(coverage.intergenic$Sample_20)
+allIntergenic <- names(coverage.intergenic$Sample_20) # pull out sample name from any sample
 allSamples <- names(coverage.intergenic)
 coverage.samples <- lapply(allIntergenic,function(intergenic){
   v <- lapply(allSamples, function(sample){
@@ -909,7 +898,6 @@ aveCoverage.final %>%
 ```
 
 # export results
-
 ```{r}
 write.table(continuous.coverage.final,
             file = "./final_outputs/continuousCov.txt",
