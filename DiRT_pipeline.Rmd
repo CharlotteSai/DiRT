@@ -353,6 +353,7 @@ intergenic.info <- data_frame(chr = input.data$chr,
                               sameStrand = input.data$tRNA.strand == input.data$gene.strand,
                               tRNAFirst = input.data$tRNAFirst,
                               tRNA.upstream = input.data$tRNA.upstream)
+
 # get correct intron
 # need closest and 2nd closest intron to intergenic
 tRNA.up.intergenic <- filter(intergenic.info, 
@@ -361,13 +362,13 @@ tRNA.up.intergenic <- filter(intergenic.info,
 tRNA.down.intergenic <- filter(intergenic.info, 
                              tRNAFirst == FALSE)
 
-# range for closest intron to intergenic for tRNA.up.intergeic 
+# corrdinates for closest intron to intergenic for tRNA.up.intergeic 
 list.gene.id <- unique(tRNA.up.intergenic$gene.id)
 res <- sapply(list.gene.id,function(g){
   rowNb <- which(intron.info$gene.id == g)
   start <- intron.info$intron.start[rowNb]
   or <- order(start)
-  rowNb[or==1] #if you want both 1st and 2nd intron returned, c() is needed
+  rowNb[or==1]
 }) 
 res <- unlist(res)
 
@@ -439,7 +440,7 @@ res <- lapply(list.gene.id,function(g){
   rowNb <- which(intron.info$gene.id == g)
   start <- intron.info$intron.start[rowNb]
   or <- order(start)
-  rowNb[or==max(or)-1] #if you want both 1st and 2nd intron returned, c() is needed
+  rowNb[or==max(or)-1] 
 }) 
 res <- unlist(res)
 
@@ -535,11 +536,11 @@ Cal_Coverage <- function(gr, bam){
 # calculate the AC and nZero for each sample
 coverage.intergenic <- lapply (bamfiles,function(bamfile){
   Cal_Coverage(GRange_intergenic, bamfile)
-}) # takes about 5min for 127 ranges assess 6 bam files
+}) 
 
 names(coverage.intergenic) <- SampleName
 DicistronicName <- names(coverage.intergenic$Sample_20) 
-# give name of dicistronic in order, any sample is ok the order is the same because of the usage of bind_row later
+# give name of dicistronic in order, any sample is ok the order is the same 
 
 # form a proper dataframe for all intergenic AC
 AC.nZero.intergenic <- lapply(names(coverage.intergenic), function(x){
@@ -614,7 +615,6 @@ AC.final <- do.call("rbind", list(AC.intergenic,
 ```
 
 ## match the intron to each tRNA-gene combo
-
 ```{r}
 # give unique id (put in id col) to intron: tRNA+gene and keep it same for intergenic
 x1 <- merge(tRNA.up.intergenic, intron.closest.for.stats.up, by = "gene.id")
@@ -708,28 +708,6 @@ aveCoverage.final <- aveCoverage.all %>%
   as_data_frame() %>%
   arrange(id, Sample, type)
 
-```
-
-## quick check
-```{r}
-# check with boxplot
-aveCoverage.final %>%
-  ggplot(aes(x = ids, y = aveCoverage)) +
-  geom_boxplot() +
-  scale_y_log10() +
-  facet_wrap(~type, ncol = 1, scales = "free") +
-  theme_bw()
-# a little bit interesting about the scale, run it and see 
-
-# Check if the overall coverage differs between intron 1 & 2
-t.test(log(filter(aveCoverage.final, type == "intron_closest_to_intergenic")$aveCoverage+1),
-       log(filter(aveCoverage.final, type == "intron_2nd_closest_to_intergenic")$aveCoverage+1), 
-       paired = FALSE)
-
-# Check if the overall coverage differs between the intergenic & intron1
-t.test(log(filter(aveCoverage.final, type == "intron_closest_to_intergenic")$aveCoverage+1),
-       log(filter(aveCoverage.final, type == "intergenic")$aveCoverage+1), 
-       paired = FALSE)
 ```
 
 # statistical test
